@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 
 from typing import Optional, List, Callable
 from functools import wraps
@@ -438,8 +439,75 @@ class Repository:
             return False
 
     def reset(self, ref="HEAD"):
+        hook_system = QApplication.instance().property('ResetHookSystem')
+        if hook_system:
+            hook_system.execute_hooks('before_reset', self, ref)
+
+        pre_reset_info = self._capture_reset_state()
+        
         self.executeKart(["reset", ref, "-f"])
         self.updateCanvas()
+        
+        if not self._verify_reset_completion(pre_reset_info, ref):
+            logging.warning("Reset completion verification failed, but continuing with after hooks")
+        
+        if hook_system:
+            hook_system.execute_hooks('after_reset', self, ref)
+
+    def _capture_reset_state(self):
+        try:
+            return {
+                'current_branch': self.currentBranch(),
+                'last_commit': self.log(ref="HEAD", dataset=None)[0]['commit'] if self.log(ref="HEAD", dataset=None) else None,
+                'working_tree_clean': self.isWorkingTreeClean()
+            }
+        except:
+            return {}
+
+    def _verify_reset_completion(self, pre_reset_info, target_ref):
+        max_attempts = 15
+        
+        for attempt in range(max_attempts):
+            try:
+                current_branch = self.currentBranch()
+                
+                if target_ref == "HEAD":
+                    if self.isWorkingTreeClean():
+                        return True
+                else:
+                    try:
+                        current_commit = self.log(ref="HEAD", dataset=None)[0]['commit']
+                        target_commit = self.log(ref=target_ref, dataset=None)[0]['commit']
+                        if current_commit == target_commit:
+                            return True
+                    except:
+                        pass
+                
+                if self._is_postgres_working_copy():
+                    if self._verify_postgres_accessibility():
+                        return True
+                        
+            except Exception as e:
+                logging.debug(f"Reset verification attempt {attempt + 1} failed: {e}")
+            
+            if attempt < max_attempts - 1:
+                time.sleep(0.2)
+        
+        return False 
+
+    def _is_postgres_working_copy(self):
+        try:
+            location = self.workingCopyLocation()
+            return location.lower().startswith("postgres")
+        except:
+            return False
+
+    def _verify_postgres_accessibility(self):
+        try:
+            datasets, _ = self.datasets()
+            return True
+        except:
+            return False
 
     def log(self, ref="HEAD", dataset=None, featureid=None):
         if dataset is not None:
@@ -766,3 +834,36 @@ class Repository:
         for layer in QgsProject.instance().mapLayers().values():
             if self.layerBelongsToRepo(layer):
                 layer.triggerRepaint()
+
+
+class ResetHookSystem:
+    _instance = None
+    
+    def __init__(self):
+        self.hooks = {}
+    
+    def register_hook(self, hook_name, callback):
+        if hook_name not in self.hooks:
+            self.hooks[hook_name] = []
+        if callback not in self.hooks[hook_name]:
+            self.hooks[hook_name].append(callback)
+        return True
+    
+    def execute_hooks(self, hook_name, *args, **kwargs):
+        results = []
+        if hook_name in self.hooks:
+            for callback in self.hooks[hook_name]:
+                result = callback(*args, **kwargs)
+                results.append(result)
+        return results
+    
+    def clear_hooks(self, hook_name=None):
+        if hook_name:
+            if hook_name in self.hooks:
+                self.hooks[hook_name] = []
+        else:
+            self.hooks.clear()
+
+
+hook_system = ResetHookSystem()
+QApplication.instance().setProperty('ResetHookSystem', hook_system)
