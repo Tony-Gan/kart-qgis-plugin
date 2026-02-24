@@ -82,6 +82,44 @@ def executeskart(f):
 
     return inner
 
+def send_bus_signal(caller, action: str, txn_uuid: Optional[str] = None, sender: str = "kart") -> str:
+    """
+    Sends a signal to the inter-plugin bus.
+
+    Payload format:
+        {"uuid": <txn_uuid>, "sender": <sender>, "method": <calling method name>, "action": <action>}
+    """
+    import uuid
+
+    if txn_uuid is None:
+        txn_uuid = str(uuid.uuid4())
+
+    method = sys._getframe(1).f_code.co_name
+    bus = None
+    try:
+        from kart.plugin_bus import get_bus
+        bus = get_bus()
+    except Exception as e:
+        print(f"[kart] {method}: plugin bus unavailable ({e})")
+
+    if bus is not None:
+        payload = {
+            "uuid": txn_uuid,
+            "sender": sender,
+            "method": method,
+            "action": action,
+        }
+        print(f"[kart] {method} -> payload={payload}")
+        try:
+            responses = bus.call(payload, caller)
+            print(f"[kart] {method} <- responses={responses}")
+            if not responses:
+                print(f"[kart] {method}: no server responded; continuing")
+        except Exception as e:
+            print(f"[kart] {method}: bus call failed ({e})")
+
+    return txn_uuid
+
 
 def kartExecutable() -> str:
     """
@@ -438,8 +476,12 @@ class Repository:
             return False
 
     def reset(self, ref="HEAD"):
-        self.executeKart(["reset", ref, "-f"])
-        self.updateCanvas()
+        txn_uuid = send_bus_signal(self, action="before")
+        try:
+            self.executeKart(["reset", ref, "-f"])
+            self.updateCanvas()
+        finally:
+            send_bus_signal(self, action="after", txn_uuid=txn_uuid)
 
     def log(self, ref="HEAD", dataset=None, featureid=None):
         if dataset is not None:

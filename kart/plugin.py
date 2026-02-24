@@ -12,6 +12,7 @@ from kart.gui.settingsdialog import SettingsDialog
 from kart.kartapi import checkKartInstalled, kartVersionDetails
 from kart.layers import LayerTracker
 from kart.processing import KartProvider
+from kart.plugin_bus import get_bus, check_bus
 
 
 pluginPath = os.path.dirname(__file__)
@@ -21,6 +22,7 @@ class KartPlugin(object):
     def __init__(self, iface):
         self.iface = iface
         self.provider = None
+        self.bus = None
 
     def initProcessing(self):
         self.provider = KartProvider()
@@ -50,6 +52,7 @@ class KartPlugin(object):
         QgsProject.instance().crsChanged.connect(self.tracker.updateRubberBands)
 
         self.initProcessing()
+        self.bus = get_bus()
 
     def showDock(self):
         if checkKartInstalled():
@@ -97,3 +100,6 @@ class KartPlugin(object):
         QgsProject.instance().layerWasAdded.disconnect(self.tracker.layerAdded)
 
         QgsApplication.processingRegistry().removeProvider(self.provider)
+
+        self.bus = None
+        check_bus()
