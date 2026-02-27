@@ -553,12 +553,16 @@ class Repository:
         return branch
 
     def checkoutBranch(self, branch, force=False):
-        if force:
-            commands = ["checkout", "--force", branch]
-        else:
-            commands = ["checkout", branch]
-        self.executeKart(commands)
-        self.updateCanvas()
+        txn_uuid = send_bus_signal(self, action="before")
+        try:
+            if force:
+                commands = ["checkout", "--force", branch]
+            else:
+                commands = ["checkout", branch]
+            self.executeKart(commands)
+            self.updateCanvas()
+        finally:
+            send_bus_signal(self, action="after", txn_uuid=txn_uuid)
 
     def createBranch(self, branch, commit="HEAD"):
         return self.executeKart(["branch", branch, commit])
@@ -567,16 +571,20 @@ class Repository:
         return self.executeKart(["branch", "-d", branch])
 
     def mergeBranch(self, branch, msg="", noff=False, ffonly=False):
-        commands = ["merge", branch, "--no-editor"]
-        if msg:
-            commands.extend(["--message", msg])
-        if noff:
-            commands.append("--no-ff")
-        if ffonly:
-            commands.append("--ff-only")
-        ret = self.executeKart(commands, True)
-        self.updateCanvas()
-        return list(ret.values())[0].get("conflicts", [])
+        txn_uuid = send_bus_signal(self, action="before")
+        try:
+            commands = ["merge", branch, "--no-editor"]
+            if msg:
+                commands.extend(["--message", msg])
+            if noff:
+                commands.append("--no-ff")
+            if ffonly:
+                commands.append("--ff-only")
+            ret = self.executeKart(commands, True)
+            self.updateCanvas()
+            return list(ret.values())[0].get("conflicts", [])
+        finally:
+            send_bus_signal(self, action="after", txn_uuid=txn_uuid)
 
     def abortMerge(self):
         return self.executeKart(["merge", "--abort"])
@@ -646,11 +654,15 @@ class Repository:
         return changes
 
     def restore(self, ref, dataset=None):
-        if dataset is not None:
-            self.executeKart(["restore", "-s", ref, dataset])
-        else:
-            self.executeKart(["restore", "-s", ref])
-        self.updateCanvas()
+        txn_uuid = send_bus_signal(self, action="before")
+        try:
+            if dataset is not None:
+                self.executeKart(["restore", "-s", ref, dataset])
+            else:
+                self.executeKart(["restore", "-s", ref])
+            self.updateCanvas()
+        finally:
+            send_bus_signal(self, action="after", txn_uuid=txn_uuid)
 
     def changes(self):
         return (
