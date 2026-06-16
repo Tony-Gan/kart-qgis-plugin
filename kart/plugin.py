@@ -12,6 +12,7 @@ from kart.gui.settingsdialog import SettingsDialog
 from kart.kartapi import checkKartInstalled, kartVersionDetails
 from kart.layers import LayerTracker
 from kart.processing import KartProvider
+from kart.plugin_bus import check_bus, get_bus
 from kart.utils import tr
 
 
@@ -21,6 +22,7 @@ class KartPlugin(object):
     def __init__(self, iface):
         self.iface = iface
         self.provider = None
+        self.bus = None
         self.translator = None
         self.dock = None
         self.sideDockWidgetArea = Qt.DockWidgetArea.RightDockWidgetArea
@@ -70,6 +72,7 @@ class KartPlugin(object):
         QgsProject.instance().crsChanged.connect(self.tracker.updateRubberBands)
 
         self.initProcessing()
+        self.bus = get_bus()
 
     def createDockWidget(self):
         """Creates and registers the Kart dock widget."""
@@ -148,6 +151,9 @@ class KartPlugin(object):
         QgsProject.instance().layerWasAdded.disconnect(self.tracker.layerAdded)
         QgsProject.instance().crsChanged.disconnect(self.tracker.updateRubberBands)
         QgsApplication.processingRegistry().removeProvider(self.provider)
+
+        self.bus = None
+        check_bus()
 
         # init
         if self.translator:
