@@ -24,7 +24,7 @@ If the installed version is not correct, you will see a message like this:
 
 ![Wrong version](img/wrongversion.png)
 
-Currently, the minimum required Kart versions is v0.11.0.
+Currently, the minimum required Kart version is v0.14.0.
 
 ## Creating a repository
 
